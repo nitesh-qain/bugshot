@@ -148,8 +148,12 @@ export default function App() {
   const fetchSprints = async () => {
     setLoadingSprints(true);
     try {
-      // Get boards for project
-      const projectKey = process.env.REACT_APP_PROJECT_KEY || cfg.projectKey;
+      // Get project key from server env
+      const cfgRes = await fetch("/api/jira?getConfig=1");
+      const cfgData = await cfgRes.json();
+      const projectKey = cfgData.projectKey || cfg.projectKey;
+      if (!projectKey) { setLoadingSprints(false); return; }
+      setCfg((c) => ({ ...c, projectKey }));
       const boards = await jiraFetch(`/agile/1.0/board?projectKeyOrId=${projectKey}&type=scrum`);
       if (!boards.values?.length) {
         // Try kanban
@@ -195,7 +199,7 @@ export default function App() {
     try {
       // Build fields
       const fields = {
-        project: { key: cfg.projectKey || 'SCRUM' },
+        project: { key: cfg.projectKey },
         summary: form.summary.trim(),
         description: {
           version: 1, type: "doc",

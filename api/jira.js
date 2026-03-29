@@ -11,19 +11,26 @@ export default async function handler(req, res) {
 
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  // Credentials from server env vars (never exposed to browser)
   const baseUrl = process.env.JIRA_BASE_URL;
   const email = process.env.JIRA_EMAIL;
   const token = process.env.JIRA_TOKEN;
+  const projectKey = process.env.JIRA_PROJECT_KEY;
 
-  if (!baseUrl || !email || !token) {
-    return res.status(500).json({ error: "Jira credentials not configured in Vercel environment variables" });
+  if (!baseUrl || !email || !token || !projectKey) {
+    return res.status(500).json({ error: `Missing env vars. Have: baseUrl=${!!baseUrl} email=${!!email} token=${!!token} projectKey=${!!projectKey}` });
+  }
+
+  // Special endpoint to expose project key to frontend
+  if (req.query.getConfig) {
+    return res.status(200).json({ projectKey });
   }
 
   const { path } = req.query;
   if (!path) return res.status(400).json({ error: "Missing path param" });
 
-  const url = `${baseUrl.replace(/\/$/, "")}/rest${decodeURIComponent(path)}`;
+  // Replace :projectKey placeholder in path
+  const resolvedPath = decodeURIComponent(path).replace(":projectKey", projectKey);
+  const url = `${baseUrl.replace(/\/$/, "")}/rest${resolvedPath}`;
   const auth = Buffer.from(`${email}:${token}`).toString("base64");
 
   try {
