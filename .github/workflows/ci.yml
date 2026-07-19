@@ -1,0 +1,70 @@
+name: Loopsy E2E Tests
+
+on:
+  - push
+  - pull_request
+
+env:
+  PROJECT_ID: "16094855-d5c4-4528-bd71-1acb72f49eee"
+  SUITE_ID: "93c215ff-0711-4552-8f1b-ca17b8b45d62"
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Suite
+        id: trigger
+        run: |
+          RESPONSE=$(curl -s -X POST \
+            "${{ secrets.LOOPSY_URL }}/api/cicd/trigger/$SUITE_ID" \
+            -H "X-API-Key: ${{ secrets.LOOPSY_API_KEY }}" \
+            -H "X-Project-Id: $PROJECT_ID" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "execution_lab": "browserstack",
+              "os_platform": "android",
+              "execution_strategy": "Sequential",
+              "parallel_count": 1,
+              "session_strategy": "FAST_RESET",
+              "app_url": "bs://315249e8afdd106091f83342ec1d38330a91a01b",
+              "app_package": "com.trainloop.benchmark",
+              "lab_config": {
+                "platform": "Android",
+                "is_real": true,
+                "extra_capabilities": {}
+              },
+              "environment": "Production",
+              "trigger_context": {
+                "commit": "'"$GITHUB_SHA"'",
+                "branch": "'"$GITHUB_REF_NAME"'",
+                "pipeline": "github-actions"
+              }
+            }')
+
+          echo "$RESPONSE"
+
+          EXEC_ID=$(echo "$RESPONSE" | jq -r '.suite_execution_id')
+          echo "exec_id=$EXEC_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Poll Results
+        run: |
+          while true; do
+            STATUS=$(curl -s \
+              -H "X-API-Key: ${{ secrets.LOOPSY_API_KEY }}" \
+              "${{ secrets.LOOPSY_URL }}/api/cicd/status/${{ steps.trigger.outputs.exec_id }}")
+
+            echo "$STATUS"
+
+            STATE=$(echo "$STATUS" | jq -r '.status')
+
+            if [ "$STATE" = "COMPLETED" ]; then
+              FAILED=$(echo "$STATUS" | jq '.progress.failed')
+              [ "$FAILED" -gt 0 ] && exit 1
+              exit 0
+            elif [ "$STATE" = "FAILED" ] || [ "$STATE" = "STOPPED" ]; then
+              exit 1
+            fi
+
+            sleep 15
+          done
